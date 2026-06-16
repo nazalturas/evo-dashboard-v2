@@ -9,7 +9,7 @@
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 
-    <script src="https://maps.googleapis.com/maps/api/js?key=KEY_HERE&libraries=places"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY_HERE&libraries=places"></script>
 
     <style>
         /* --- 1. CSS Variables --- */
@@ -257,9 +257,286 @@
             <div class="panel" id="panel-rates">
                 <div class="section-title">Current rates (with 12% tax factored in)</div>
                 <div class="rates-grid">
-                    <div class="rate-card"><div class="rate-label">Per minute</div><div class="rate-val">$0.55</div><div class="rate-
+                    <div class="rate-card"><div class="rate-label">Per minute</div><div class="rate-val">$0.55</div><div class="rate-note">$0.49 base + tax</div></div>
+                    <div class="rate-card"><div class="rate-label">Per hour cap</div><div class="rate-val">$20.15</div><div class="rate-note">$17.99 base + tax</div></div>
+                    <div class="rate-card"><div class="rate-label">Per day cap</div><div class="rate-val">$117.59</div><div class="rate-note">$104.99 base + tax</div></div>
+                    <div class="rate-card"><div class="rate-label">All-access fee</div><div class="rate-val">$2.07</div><div class="rate-note">$1.85 base + tax</div></div>
+                </div>
+                <div class="advice-box">
+                    <i class="ti ti-bulb"></i>
+                    <div>Rates shown here have the 5% GST and 7% PST applied so you know exactly what hits your credit card.</div>
+                </div>
+            </div>
+        </div>
+    </div>
 
+    <script>
+        // --- 1. Password & Setup ---
+        
+        // Check for 24-hour timeout on page load
+        document.addEventListener("DOMContentLoaded", () => {
+            const unlockTime = localStorage.getItem('evo_unlock_time');
+            if (unlockTime) {
+                const now = new Date().getTime();
+                // 24 hours in milliseconds = 86400000
+                if (now - parseInt(unlockTime) < 86400000) {
+                    unlockDashboard();
+                } else {
+                    localStorage.removeItem('evo_unlock_time'); // Session expired
+                }
+            }
+        });
 
-                                                                                                                        
-   'comentatiroo'                                                                                                                     
-                                                                                                                        
+        function unlockDashboard() {
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('app-container').style.display = 'flex';
+            renderHistory();
+            initGoogleAutocomplete(); // Initialize Maps dropdowns
+        }
+
+        function checkPassword() {
+            const input = document.getElementById('password-input').value;
+            if (input === 'senha1234' || input === 'ilovemygf') {
+                // Save the current timestamp to bypass login for 24 hours
+                localStorage.setItem('evo_unlock_time', new Date().getTime());
+                unlockDashboard();
+            } else {
+                document.getElementById('login-error').style.display = 'block';
+            }
+        }
+
+        document.getElementById("password-input").addEventListener("keypress", function(event) {
+            if (event.key === "Enter") { event.preventDefault(); checkPassword(); }
+        });
+
+        // --- 2. Rate & Tax Logic ---
+        const RATE_MIN = 0.49;
+        const RATE_HR = 17.99;
+        const RATE_DAY = 104.99;
+        const ACCESS_FEE = 1.85;
+        const TAX_RATE = 0.12; // 5% GST + 7% PST
+        const BREAKEVEN_MIN = RATE_HR / RATE_MIN;
+
+        let rides = [];
+        try { const s = localStorage.getItem('evo_rides'); if(s) rides = JSON.parse(s); } catch(e){}
+        function saveToStorage() { try { localStorage.setItem('evo_rides', JSON.stringify(rides)); } catch(e){} }
+
+        // Calculates base driving cost (no fee, no tax)
+        function calcBaseCost(minutes) {
+            const hours = minutes / 60;
+            const hourCaps = Math.floor(hours);
+            const remMins = minutes - hourCaps * 60;
+            let cost = hourCaps * RATE_HR + Math.min(remMins * RATE_MIN, RATE_HR);
+            return Math.min(cost, RATE_DAY);
+        }
+
+        function formatTime(secs) {
+            const h = Math.floor(secs / 3600).toString().padStart(2,'0');
+            const m = Math.floor((secs % 3600) / 60).toString().padStart(2,'0');
+            const s = (secs % 60).toString().padStart(2,'0');
+            return `${h}:${m}:${s}`;
+        }
+
+        function formatMins(m) {
+            if (m < 60) return `${Math.round(m)} min`;
+            const h = Math.floor(m/60), mn = Math.round(m%60);
+            return mn > 0 ? `${h}h ${mn}m` : `${h}h`;
+        }
+
+        // --- 3. Timer Logic ---
+        let interval = null;
+        let startTime = null;
+        let elapsedSecs = 0;
+        let isRunning = false;
+        let tripEnded = false;
+
+        function toggleRide() {
+            if (!isRunning && !tripEnded) {
+                startTime = Date.now() - elapsedSecs * 1000;
+                isRunning = true;
+                tripEnded = false;
+                document.getElementById('start-btn').innerHTML = '<i class="ti ti-player-stop"></i> End ride';
+                document.getElementById('start-btn').classList.add('running');
+                document.getElementById('save-form').style.display = 'none';
+                interval = setInterval(tick, 1000);
+            } else if (isRunning) {
+                clearInterval(interval);
+                isRunning = false;
+                tripEnded = true;
+                document.getElementById('start-btn').innerHTML = '<i class="ti ti-player-play"></i> New ride';
+                document.getElementById('start-btn').classList.remove('running');
+                document.getElementById('save-form').style.display = 'flex';
+                tick();
+            } else {
+                elapsedSecs = 0;
+                tripEnded = false;
+                document.getElementById('timer-display').textContent = '00:00:00';
+                document.getElementById('timer-cost').textContent = '$0.00';
+                document.getElementById('timer-note').textContent = 'Tap "Start ride" to begin timing';
+                document.getElementById('zone-fill').style.width = '0%';
+                document.getElementById('zone-fill').style.background = '#1D9E75';
+                document.getElementById('start-btn').innerHTML = '<i class="ti ti-player-play"></i> Start ride';
+                document.getElementById('save-form').style.display = 'none';
+            }
+        }
+
+        function tick() {
+            if (isRunning) elapsedSecs = Math.floor((Date.now() - startTime) / 1000);
+            const mins = elapsedSecs / 60;
+            
+            const driveCost = calcBaseCost(mins);
+            const subtotal = driveCost + ACCESS_FEE;
+            const tax = subtotal * TAX_RATE;
+            const grandTotal = subtotal + tax;
+
+            document.getElementById('timer-display').textContent = formatTime(elapsedSecs);
+            document.getElementById('timer-cost').textContent = `$${grandTotal.toFixed(2)}`;
+            document.getElementById('timer-note').textContent = `Subtotal: $${subtotal.toFixed(2)} + $${tax.toFixed(2)} Tax`;
+
+            const fill = document.getElementById('zone-fill');
+            fill.style.width = Math.min(mins / 60 * 100, 100) + '%';
+            if (mins < BREAKEVEN_MIN) fill.style.background = '#1D9E75';
+            else fill.style.background = '#BA7517';
+        }
+
+        function saveRide() {
+            const label = document.getElementById('ride-label').value.trim() || 'Untitled trip';
+            const mins = elapsedSecs / 60;
+            const subtotal = calcBaseCost(mins) + ACCESS_FEE;
+            const grandTotal = subtotal * (1 + TAX_RATE);
+            
+            rides.unshift({
+                id: Date.now(),
+                label,
+                mins: parseFloat(mins.toFixed(2)),
+                cost: parseFloat(grandTotal.toFixed(2)),
+                date: new Date().toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })
+            });
+            saveToStorage();
+            document.getElementById('save-form').style.display = 'none';
+            document.getElementById('ride-label').value = '';
+            toggleRide(); // reset timer
+            renderHistory();
+        }
+
+        function deleteRide(id) {
+            rides = rides.filter(r => r.id !== id);
+            saveToStorage();
+            renderHistory();
+        }
+
+        function clearHistory() {
+            if (confirm('Clear all ride history?')) { rides = []; saveToStorage(); renderHistory(); }
+        }
+
+        function renderHistory() {
+            const list = document.getElementById('ride-list');
+            if (rides.length === 0) {
+                list.innerHTML = '<div class="empty-state"><i class="ti ti-car"></i>No rides saved yet.</div>';
+            } else {
+                list.innerHTML = rides.map(r => `
+                <div class="ride-item">
+                    <div class="ride-info">
+                        <div class="ride-name">${r.label}</div>
+                        <div class="ride-meta">${r.date} · ${formatMins(r.mins)}</div>
+                    </div>
+                    <div class="ride-cost">$${r.cost.toFixed(2)}</div>
+                    <button class="ride-delete" onclick="deleteRide(${r.id})"><i class="ti ti-trash"></i></button>
+                </div>
+                `).join('');
+            }
+            const total = rides.reduce((a,r) => a+r.cost, 0);
+            document.getElementById('h-rides').textContent = rides.length;
+            document.getElementById('h-spent').textContent = `$${total.toFixed(2)}`;
+        }
+
+        // --- 4. Google Maps & Estimator Logic ---
+        function initGoogleAutocomplete() {
+            if (typeof google !== 'undefined' && google.maps && google.maps.places) {
+                new google.maps.places.Autocomplete(document.getElementById('est-origin'));
+                new google.maps.places.Autocomplete(document.getElementById('est-dest'));
+            }
+        }
+
+        function getMapEstimate() {
+            const origin = document.getElementById('est-origin').value;
+            const dest = document.getElementById('est-dest').value;
+
+            if (!origin || !dest) {
+                alert("Please enter both an origin and a destination.");
+                return;
+            }
+
+            // --- API KEY WARNING SYSTEM ---
+            const scriptTag = document.querySelector('script[src*="maps.googleapis.com"]');
+            if (scriptTag && scriptTag.src.includes('YOUR_API_KEY_HERE')) {
+                alert("⚠️ Google Maps cannot calculate the route because you haven't added an API Key!\n\nYou must replace 'YOUR_API_KEY_HERE' on line 15 with a valid Google Cloud API key for this feature to work automatically. You can still enter the minutes manually below.");
+                return;
+            }
+
+            if (typeof google === 'undefined' || !google.maps) {
+                alert("Google Maps failed to load. Please check your API key and internet connection.");
+                return;
+            }
+
+            const service = new google.maps.DistanceMatrixService();
+            service.getDistanceMatrix({
+                origins: [origin],
+                destinations: [dest],
+                travelMode: 'DRIVING'
+            }, (response, status) => {
+                if (status === 'OK' && response.rows[0].elements[0].status === 'OK') {
+                    const mins = Math.ceil(response.rows[0].elements[0].duration.value / 60);
+                    document.getElementById('est-minutes').value = mins;
+                    updateEstimate();
+                } else {
+                    alert("Could not find a driving route between these locations.");
+                }
+            });
+        }
+
+        function updateEstimate() {
+            const mins = parseFloat(document.getElementById('est-minutes').value);
+            if (!mins || mins <= 0) {
+                document.getElementById('estimate-result').style.display = 'none';
+                return;
+            }
+            document.getElementById('estimate-result').style.display = 'block';
+
+            // ONE WAY MATH
+            const drive1 = calcBaseCost(mins);
+            const subtotal1 = drive1 + ACCESS_FEE;
+            const tax1 = subtotal1 * TAX_RATE;
+            const total1 = subtotal1 + tax1;
+
+            // ROUND TRIP MATH
+            const subtotal2 = subtotal1 * 2;
+            const tax2 = tax1 * 2;
+            const total2 = total1 * 2;
+
+            const bd = document.getElementById('est-breakdown');
+            bd.innerHTML = `
+                <div class="est-row" style="background:#e3f2fd; padding:6px 10px; border-radius:6px; margin-bottom:8px; color:#111827;"><strong>Way There (One-Way)</strong></div>
+                <div class="est-row"><span class="est-label">Estimated time</span><span class="est-val">${formatMins(mins)}</span></div>
+                <div class="est-row"><span class="est-label">Subtotal (Drive + Fee)</span><span class="est-val">$${subtotal1.toFixed(2)}</span></div>
+                <div class="est-row"><span class="est-label">Taxes (12% BC PST/GST)</span><span class="est-val">$${tax1.toFixed(2)}</span></div>
+                <div class="est-row" style="margin-bottom:16px; border-bottom:none;"><span class="est-label" style="font-weight:500;">One-Way Total</span><span class="est-val" style="font-size:18px; font-weight:bold; color:var(--color-text-success);">$${total1.toFixed(2)}</span></div>
+
+                <div class="est-row" style="background:#e3f2fd; padding:6px 10px; border-radius:6px; margin-bottom:8px; color:#111827;"><strong>Way Back (Round-Trip)</strong></div>
+                <div class="est-row"><span class="est-label">Total driving time</span><span class="est-val">${formatMins(mins * 2)}</span></div>
+                <div class="est-row"><span class="est-label">Subtotal (2 trips)</span><span class="est-val">$${subtotal2.toFixed(2)}</span></div>
+                <div class="est-row"><span class="est-label">Taxes (12% BC PST/GST)</span><span class="est-val">$${tax2.toFixed(2)}</span></div>
+                <div class="est-row" style="border-bottom:none;"><span class="est-label" style="font-weight:500;">Round-Trip Total</span><span class="est-val" style="font-size:18px; font-weight:bold; color:var(--color-text-success);">$${total2.toFixed(2)}</span></div>
+            `;
+        }
+
+        function switchTab(name) {
+            ['timer','history','estimate','rates'].forEach(t => {
+                document.getElementById('panel-'+t).classList.toggle('active', t===name);
+                document.getElementById('tab-'+t).classList.toggle('active', t===name);
+            });
+            if (name === 'history') renderHistory();
+        }
+    </script>
+</body>
+</html>
