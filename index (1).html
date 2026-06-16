@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evo Dashboard</title>
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+
+    <script src="https://maps.googleapis.com/maps/api/js?key=KEY_HERE&libraries=places"></script>
+
+    <style>
+        /* --- 1. CSS Variables --- */
+        :root {
+            --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            
+            --color-background-primary: #ffffff;
+            --color-background-secondary: #f7f7f9;
+            --color-background-success: #e8f5e9;
+            --color-background-warning: #fff8e1;
+            --color-background-danger: #ffebee;
+            --color-background-info: #e3f2fd;
+            
+            --color-text-primary: #111827;
+            --color-text-secondary: #4b5563;
+            --color-text-tertiary: #9ca3af;
+            --color-text-success: #1D9E75;
+            --color-text-warning: #BA7517;
+            --color-text-danger: #dc2626;
+            --color-text-info: #2563eb;
+            
+            --color-border-secondary: #d1d5db;
+            --color-border-tertiary: #e5e7eb;
+            --color-border-success: #a7f3d0;
+            --color-border-warning: #fde68a;
+            --color-border-danger: #fecaca;
+            --color-border-info: #bfdbfe;
+            
+            --border-radius-md: 8px;
+            --border-radius-lg: 12px;
+        }
+
+        /* --- 2. Base App Layout & Login Screen --- */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            font-family: var(--font-sans); 
+            background-color: #e5e7eb;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        #login-screen {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #111827;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        #login-screen input {
+            padding: 12px;
+            font-size: 16px;
+            margin-top: 20px;
+            border-radius: var(--border-radius-md);
+            border: none;
+            text-align: center;
+            color: black;
+        }
+
+        #login-screen button {
+            margin-top: 15px;
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: 500;
+            background: #1D9E75;
+            color: white;
+            border: none;
+            border-radius: var(--border-radius-md);
+            cursor: pointer;
+        }
+
+        #login-screen button:hover { opacity: 0.9; }
+
+        #app-container {
+            width: 100%;
+            max-width: 420px;
+            background: var(--color-background-primary);
+            min-height: 100vh;
+            padding: 1rem 1.5rem;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+            display: none; /* Hidden until unlocked */
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        /* --- 3. Dashboard Styles --- */
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; }
+        .tab-bar { display: flex; border-bottom: 0.5px solid var(--color-border-tertiary); margin-bottom: 1.5rem; gap: 0; }
+        .tab-btn { background: none; border: none; border-bottom: 2px solid transparent; padding: 10px 18px; font-size: 14px; font-weight: 400; color: var(--color-text-secondary); cursor: pointer; transition: color 0.15s, border-color 0.15s; display: flex; align-items: center; gap: 6px; }
+        .tab-btn.active { color: var(--color-text-primary); border-bottom: 2px solid var(--color-text-primary); font-weight: 500; }
+        .tab-btn:hover:not(.active) { color: var(--color-text-primary); }
+        .panel { display: none; }
+        .panel.active { display: block; }
+        .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 1.25rem; }
+        .metric-card { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 0.875rem 1rem; }
+        .metric-label { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 4px; letter-spacing: 0.01em; }
+        .metric-value { font-size: 22px; font-weight: 500; color: var(--color-text-primary); }
+        .big-timer { text-align: center; padding: 2rem 1rem 1.5rem; }
+        .timer-display { font-size: 64px; font-weight: 500; letter-spacing: -2px; color: var(--color-text-primary); font-family: var(--font-mono); line-height: 1; margin-bottom: 4px; }
+        .timer-cost { font-size: 28px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 6px; }
+        .timer-note { font-size: 13px; color: var(--color-text-secondary); min-height: 18px; }
+        .start-btn { display: block; margin: 1.25rem auto; background: var(--color-text-primary); color: var(--color-background-primary); border: none; border-radius: var(--border-radius-lg); padding: 14px 40px; font-size: 16px; font-weight: 500; cursor: pointer; letter-spacing: 0.01em; transition: opacity 0.15s; }
+        .start-btn:hover { opacity: 0.85; }
+        .start-btn:active { transform: scale(0.98); }
+        .start-btn.running { background: var(--color-text-danger); color: var(--color-background-primary); }
+        .zone-bar { margin: 1rem 0 0.5rem; background: var(--color-background-secondary); border-radius: 999px; height: 10px; position: relative; overflow: hidden; }
+        .zone-fill { height: 100%; border-radius: 999px; transition: width 1s linear, background 0.5s; background: #1D9E75; }
+        .zone-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--color-text-tertiary); margin-bottom: 0.75rem; }
+        .zone-markers { position: relative; height: 0; }
+        .zone-marker { position: absolute; width: 1px; height: 10px; background: var(--color-background-primary); top: -10px; }
+        .advice-box { border-radius: var(--border-radius-md); padding: 0.75rem 1rem; font-size: 13px; margin-bottom: 1rem; display: flex; align-items: flex-start; gap: 10px; border: 0.5px solid var(--color-border-success); background: var(--color-background-success); color: var(--color-text-success); }
+        .advice-box.warning { border-color: var(--color-border-warning); background: var(--color-background-warning); color: var(--color-text-warning); }
+        .advice-box i { font-size: 18px; margin-top: 1px; flex-shrink: 0; }
+        .save-form { border-top: 0.5px solid var(--color-border-tertiary); padding-top: 1rem; margin-top: 1rem; display: flex; gap: 8px; align-items: center; }
+        .save-form input { flex: 1; font-size: 14px; padding: 8px 12px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-secondary); background: var(--color-background-primary); color: var(--color-text-primary); }
+        .save-form button { padding: 8px 16px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-secondary); background: var(--color-background-secondary); color: var(--color-text-primary); font-size: 14px; cursor: pointer; }
+        .ride-list { display: flex; flex-direction: column; gap: 8px; margin-top: 0.5rem; }
+        .ride-item { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .ride-info { flex: 1; min-width: 0; }
+        .ride-name { font-size: 14px; font-weight: 500; color: var(--color-text-primary); }
+        .ride-meta { font-size: 12px; color: var(--color-text-secondary); margin-top: 2px; }
+        .ride-cost { font-size: 16px; font-weight: 500; color: var(--color-text-primary); }
+        .ride-delete { background: none; border: none; color: var(--color-text-tertiary); cursor: pointer; padding: 4px; font-size: 16px; }
+        .empty-state { text-align: center; padding: 2.5rem 1rem; color: var(--color-text-tertiary); font-size: 14px; }
+        .empty-state i { font-size: 36px; display: block; margin-bottom: 8px; opacity: 0.5; }
+        .map-inputs { display: flex; flex-direction: column; gap: 10px; margin-bottom: 1rem; background: var(--color-background-secondary); padding: 1rem; border-radius: var(--border-radius-md); }
+        .map-inputs input { width: 100%; font-size: 14px; padding: 10px; border-radius: var(--border-radius-md); border: 1px solid var(--color-border-secondary); }
+        .map-inputs button { width: 100%; padding: 10px; background: #1D9E75; color: white; border: none; border-radius: var(--border-radius-md); cursor: pointer; font-weight: 500; }
+        .estimate-card { background: var(--color-background-secondary); border-radius: var(--border-radius-lg); padding: 1rem 1.25rem; margin-bottom: 1rem; }
+        .est-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; padding: 5px 0; border-bottom: 0.5px solid var(--color-border-tertiary); }
+        .est-row:last-child { border-bottom: none; }
+        .est-label { color: var(--color-text-secondary); }
+        .est-val { font-weight: 500; color: var(--color-text-primary); }
+        .rates-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1rem; }
+        .rate-card { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 0.75rem 1rem; }
+        .rate-label { font-size: 12px; color: var(--color-text-secondary); }
+        .rate-val { font-size: 20px; font-weight: 500; color: var(--color-text-primary); margin: 2px 0; }
+        .rate-note { font-size: 11px; color: var(--color-text-tertiary); }
+        .section-title { font-size: 13px; font-weight: 500; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.75rem; }
+    </style>
+</head>
+<body>
+
+    <div id="login-screen">
+        <i class="ti ti-car" style="font-size: 48px; margin-bottom: 10px;"></i>
+        <h2>Evo Tracker</h2>
+        <p style="color: var(--color-text-tertiary); margin-top: 5px;">Enter password to access</p>
+        <input type="password" id="password-input" placeholder="Password">
+        <button onclick="checkPassword()">Unlock Dashboard</button>
+        <p id="login-error" style="color: #ff3b30; display: none; margin-top: 15px;">Incorrect password.</p>
+    </div>
+
+    <div id="app-container">
+        <div style="padding: 0.5rem 0 0;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">
+                <div>
+                    <div style="font-size:18px; font-weight:500; color:var(--color-text-primary);">Evo dashboard</div>
+                    <div style="font-size:12px; color:var(--color-text-tertiary); margin-top:2px;">Includes 12% BC PST/GST</div>
+                </div>
+                <div style="font-size:12px; color:var(--color-text-secondary); background:var(--color-background-secondary); padding:4px 10px; border-radius:999px;">$0.49/min · $17.99/hr</div>
+            </div>
+
+            <div class="tab-bar">
+                <button class="tab-btn active" onclick="switchTab('timer')" id="tab-timer"><i class="ti ti-player-play"></i> Timer</button>
+                <button class="tab-btn" onclick="switchTab('history')" id="tab-history"><i class="ti ti-history"></i> History</button>
+                <button class="tab-btn" onclick="switchTab('estimate')" id="tab-estimate"><i class="ti ti-map-pin"></i> Estimate</button>
+                <button class="tab-btn" onclick="switchTab('rates')" id="tab-rates"><i class="ti ti-info-circle"></i> Rates</button>
+            </div>
+
+            <div class="panel active" id="panel-timer">
+                <div class="big-timer">
+                    <div class="timer-display" id="timer-display">00:00:00</div>
+                    <div class="timer-cost" id="timer-cost">$0.00</div>
+                    <div class="timer-note" id="timer-note">Tap "Start ride" to begin timing</div>
+                </div>
+
+                <div class="zone-labels">
+                    <span>0 min</span>
+                    <span id="zone-breakeven">36.7 min</span>
+                    <span>1 hr cap</span>
+                </div>
+                <div class="zone-bar">
+                    <div class="zone-fill" id="zone-fill" style="width:0%"></div>
+                    <div class="zone-markers">
+                        <div class="zone-marker" style="left:40.7%"></div>
+                        <div class="zone-marker" style="left:100%"></div>
+                    </div>
+                </div>
+
+                <div id="advice-box" class="advice-box">
+                    <i class="ti ti-info-circle"></i>
+                    <div id="advice-text">Start a ride to see real-time cost advice.</div>
+                </div>
+
+                <button class="start-btn" id="start-btn" onclick="toggleRide()">
+                    <i class="ti ti-player-play"></i> Start ride
+                </button>
+
+                <div class="save-form" id="save-form" style="display:none;">
+                    <input type="text" id="ride-label" placeholder="Where did you go?" maxlength="40">
+                    <button onclick="saveRide()"><i class="ti ti-device-floppy"></i> Save</button>
+                </div>
+            </div>
+
+            <div class="panel" id="panel-history">
+                <div class="metric-grid" id="history-metrics">
+                    <div class="metric-card"><div class="metric-label">Total rides</div><div class="metric-value" id="h-rides">0</div></div>
+                    <div class="metric-card"><div class="metric-label">Total spent</div><div class="metric-value" id="h-spent">$0</div></div>
+                </div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; margin: 1rem 0 0.5rem;">
+                    <div class="section-title" style="margin:0;">Ride history</div>
+                    <button onclick="clearHistory()" style="font-size:12px; color:var(--color-text-danger); background:none; border:none; cursor:pointer;">Clear all</button>
+                </div>
+                <div class="ride-list" id="ride-list">
+                    <div class="empty-state"><i class="ti ti-car"></i>No rides saved yet.</div>
+                </div>
+            </div>
+
+            <div class="panel" id="panel-estimate">
+                <div class="section-title">Trip cost estimator</div>
+                <p style="font-size:13px; color:var(--color-text-secondary); margin-bottom:1rem;">Enter locations to estimate driving time and total cost including taxes.</p>
+
+                <div class="map-inputs">
+                    <input type="text" id="est-origin" placeholder="Starting point (e.g., Vancouver, BC)">
+                    <input type="text" id="est-dest" placeholder="Destination address">
+                    <button onclick="getMapEstimate()"><i class="ti ti-route"></i> Calculate Route</button>
+                    
+                    <div style="text-align:center; font-size:12px; color:var(--color-text-tertiary); margin: 5px 0;">— OR enter minutes manually —</div>
+                    <input type="number" id="est-minutes" placeholder="Duration in minutes" min="1" oninput="updateEstimate()">
+                </div>
+
+                <div id="estimate-result" style="display:none;">
+                    <div class="estimate-card" id="est-breakdown">
+                        </div>
+                </div>
+            </div>
+
+            <div class="panel" id="panel-rates">
+                <div class="section-title">Current rates (with 12% tax factored in)</div>
+                <div class="rates-grid">
+                    <div class="rate-card"><div class="rate-label">Per minute</div><div class="rate-val">$0.55</div><div class="rate-
+
+
+                                                                                                                        
+   'comentatiroo'                                                                                                                     
+                                                                                                                        
